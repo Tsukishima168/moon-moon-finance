@@ -220,7 +220,7 @@ const TransactionList = ({ items, onVoid }: any) => {
   );
 };
 
-const Dashboard = ({ transactions, expenses, onNavigate, onVoidItem }: any) => {
+const Dashboard = ({ transactions, expenses, lastClosingFloat, onNavigate, onVoidItem }: any) => {
   const allItems = useMemo(() => {
     const txs = transactions.map((t: any) => ({ ...t, sortTime: t.timestamp }));
     const exps = expenses.map((e: any) => ({ ...e, sortTime: e.created_at, type: 'EXPENSE' }));
@@ -233,8 +233,11 @@ const Dashboard = ({ transactions, expenses, onNavigate, onVoidItem }: any) => {
     const gross = validTx.reduce((sum: number, t: any) => sum + t.amount, 0);
     const fees = validTx.reduce((sum: number, t: any) => sum + t.fee_amount, 0);
     const exp = validExp.reduce((sum: number, e: any) => sum + e.amount, 0);
-    return { gross, fees, exp, net: gross - fees - exp };
-  }, [transactions, expenses]);
+    const cashSales = validTx.filter((t: any) => t.channel === 'CASH').reduce((sum: number, t: any) => sum + t.amount, 0);
+    const cashExpenses = validExp.filter((e: any) => e.source === 'DRAWER').reduce((sum: number, e: any) => sum + e.amount, 0);
+    const shouldHaveCash = lastClosingFloat + cashSales - cashExpenses;
+    return { gross, fees, exp, cashSales, cashExpenses, shouldHaveCash };
+  }, [transactions, expenses, lastClosingFloat]);
 
   const Metric = ({ title, value }: any) => (
     <div className="bg-black border-r border-b border-zinc-800 p-5 flex flex-col justify-between h-28 last:border-r-0 md:last:border-r-0">
@@ -247,12 +250,12 @@ const Dashboard = ({ transactions, expenses, onNavigate, onVoidItem }: any) => {
     <div className="space-y-8 animate-fade-in pb-20">
       <div className="border-2 border-zinc-800 bg-black">
         <div className="grid grid-cols-2 lg:grid-cols-4">
-          <Metric title="總營收" value={formatCurrency(metrics.gross)} />
+          <Metric title="收入" value={formatCurrency(metrics.gross)} />
           <Metric title="手續費" value={`-${formatCurrency(metrics.fees)}`} />
-          <Metric title="總支出" value={`-${formatCurrency(metrics.exp)}`} />
+          <Metric title="支出" value={`-${formatCurrency(metrics.exp)}`} />
           <div className="bg-white p-5 flex flex-col justify-between h-28 border-b border-zinc-800 md:border-b-0">
-            <div className="flex justify-between items-start"><p className="text-[10px] font-bold text-black uppercase tracking-widest">預估淨利</p><div className="w-2 h-2 bg-black"/></div>
-            <h3 className="text-3xl font-bold text-black font-mono tracking-tighter">{formatCurrency(metrics.net)}</h3>
+            <div className="flex justify-between items-start"><p className="text-[10px] font-bold text-black uppercase tracking-widest">應有現金</p><div className="w-2 h-2 bg-black"/></div>
+            <h3 className="text-3xl font-bold text-black font-mono tracking-tighter">{formatCurrency(metrics.shouldHaveCash)}</h3>
           </div>
         </div>
       </div>
@@ -681,7 +684,7 @@ const App = () => {
         </header>
 
         <main className="max-w-6xl mx-auto px-4 py-12">
-          {view === 'dashboard' && <Dashboard transactions={transactions} expenses={expenses} feeConfig={feeConfig} onNavigate={setView} onVoidItem={handleVoidRequest} />}
+          {view === 'dashboard' && <Dashboard transactions={transactions} expenses={expenses} lastClosingFloat={lastClosingFloat} feeConfig={feeConfig} onNavigate={setView} onVoidItem={handleVoidRequest} />}
           {view === 'income' && <IncomeForm feeConfig={feeConfig} onCancel={() => setView('dashboard')} onSuccess={() => setView('dashboard')} />}
           {view === 'expense' && <ExpenseForm onCancel={() => setView('dashboard')} onSuccess={() => setView('dashboard')} />}
           {view === 'closing' && <ClosingWizard transactions={transactions} expenses={expenses} lastClosingFloat={lastClosingFloat} onCancel={() => setView('dashboard')} onSuccess={() => setView('dashboard')} />}
