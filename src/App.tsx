@@ -18,8 +18,7 @@ import {
   serverTimestamp,
   limit,
   getDocs,
-  writeBatch,
-  where
+  writeBatch
 } from 'firebase/firestore';
 import { 
   Plus, 
