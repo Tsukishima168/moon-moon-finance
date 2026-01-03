@@ -265,6 +265,12 @@ const Dashboard = ({ transactions, expenses, lastClosingFloat, onNavigate, onVoi
         <Button onClick={() => onNavigate('closing')} variant="secondary" className="h-24 border-2 flex-col gap-2"><CheckSquare size={24} /><span className="text-xs tracking-wider">日結</span></Button>
         <Button onClick={() => onNavigate('history')} variant="secondary" className="h-24 border-2 flex-col gap-2"><History size={24} /><span className="text-xs tracking-wider">紀錄</span></Button>
       </div>
+      
+      {/* 🗂️ 新增：點鈔機歷史按鈕 */}
+      <div className="grid grid-cols-1 gap-3">
+        <Button onClick={() => onNavigate('billsHistory')} variant="secondary" className="h-12 border-2"><span className="tracking-wider">📊 查看點鈔機歷史</span></Button>
+      </div>
+      
       <TransactionList items={allItems} onVoid={onVoidItem} />
     </div>
   );
@@ -381,10 +387,37 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
   const [openingFloat, setOpeningFloat] = useState(lastClosingFloat || 5110);
   const [closingFloat, setClosingFloat] = useState(5110);
   const [actualCounted, setActualCounted] = useState(0);
-  const [bills, setBills] = useState<any>({ 1000: 0, 500: 0, 100: 0, 50: 0, 10: 0, 5: 0, 1: 0 });
+  
+  // 🛡️ 改進：使用 localStorage 備份點鈔機資料，防止丟失
+  const [bills, setBills] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem('billsBackup');
+      return saved ? JSON.parse(saved) : { 1000: 0, 500: 0, 100: 0, 50: 0, 10: 0, 5: 0, 1: 0 };
+    } catch (e) {
+      return { 1000: 0, 500: 0, 100: 0, 50: 0, 10: 0, 5: 0, 1: 0 };
+    }
+  });
+  
   const [reason, setReason] = useState('');
   const [staffName, setStaffName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { showToast } = useToast();
+  
+  // 🛡️ 當 bills 改變時，自動保存到 localStorage
+  useEffect(() => {
+    localStorage.setItem('billsBackup', JSON.stringify(bills));
+  }, [bills]);
+
+  // 🗂️ 保存點鈔機歷史紀錄
+  const saveBillsHistory = (historyData: any) => {
+    try {
+      const history = JSON.parse(localStorage.getItem('billsHistory') || '[]');
+      history.push(historyData);
+      localStorage.setItem('billsHistory', JSON.stringify(history));
+    } catch (e) {
+      console.error('Failed to save bills history:', e);
+    }
+  };
 
   const cashSales = useMemo(() => transactions.filter((t:any) => t.channel === 'CASH' && t.status !== 'VOID').reduce((a:number,c:any) => a+c.amount,0), [transactions]);
   const cashExpenses = useMemo(() => expenses.filter((e:any) => e.source === 'DRAWER' && e.status !== 'VOID').reduce((a:number,c:any) => a+c.amount,0), [expenses]);
@@ -399,6 +432,8 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
 
   const handleFinish = async () => {
     if (step === 3 && ((variance !== 0 && !reason) || !staffName)) return showToast('請填寫差異原因與經手人', 'error');
+    
+    setIsSubmitting(true);
     try {
       const today = getTodayString();
       const closingPayload = {
@@ -411,6 +446,19 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
       
       const closingRef = doc(db, 'daily_closings', today);
       batch.set(closingRef, { ...closingPayload, closed_at: serverTimestamp(), finalized: true });
+      
+      // 🗂️ 保存點鈔機歷史紀錄
+      saveBillsHistory({
+        date: today,
+        time: new Date().toLocaleTimeString('zh-TW'),
+        bills: bills,
+        actualCounted: actualCounted,
+        closingFloat: closingFloat,
+        variance: variance,
+        staffName: staffName,
+        synced: false, // 記錄是否已上傳到 Google Sheet
+        syncTime: null
+      });
       
       // 標記當日 transactions 為 CLOSED（過濾方式：按 date field，若無則遍歷全部）
       const txCol = collection(db, 'transactions');
@@ -437,9 +485,18 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
       });
       
       await batch.commit();
-      showToast('日結完成！', 'success');
+      
+      // 🛡️ 日結完成後，清除 localStorage 備份
+      localStorage.removeItem('billsBackup');
+      
+      showToast('日結完成！資料已上傳 Firebase', 'success');
       onSuccess();
-    } catch (e) { showToast('發生錯誤', 'error'); }
+    } catch (e) { 
+      showToast('❌ 日結失敗：' + (e as any).message, 'error');
+      console.error('Closing error:', e);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -461,7 +518,45 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
         )}
         {step === 2 && (
           <div className="space-y-6">
-             <div className="flex justify-between border-b-2 border-zinc-800 pb-2"><h3 className="text-lg font-bold">點算現金</h3><p className="text-2xl font-mono text-white">{formatCurrency(actualCounted)}</p></div>
+             <div className="flex justify-between border-b-2 border-zinc-800 pb-2">
+               <h3 className="text-lg font-bold">點算現金</h3>
+               <p className="text-2xl font-mono text-white">{formatCurrency(actualCounted)}</p>
+             </div>
+             
+             {/* 🛡️ 新增：清除和恢復按鈕 */}
+             <div className="flex gap-2">
+               <Button 
+                 variant="danger" 
+                 onClick={() => {
+                   if (confirm('確定要清空所有鈔票數據嗎？')) {
+                     setBills({ 1000: 0, 500: 0, 100: 0, 50: 0, 10: 0, 5: 0, 1: 0 });
+                     showToast('已清空點鈔機', 'success');
+                   }
+                 }} 
+                 className="flex-1 text-xs"
+               >
+                 🗑️ 清空
+               </Button>
+               <Button 
+                 variant="secondary" 
+                 onClick={() => {
+                   try {
+                     const saved = localStorage.getItem('billsBackup');
+                     if (saved) {
+                       const data = JSON.parse(saved);
+                       setBills(data);
+                       showToast('已恢復上次數據', 'success');
+                     }
+                   } catch (e) {
+                     showToast('無法恢復數據', 'error');
+                   }
+                 }} 
+                 className="flex-1 text-xs"
+               >
+                 ↶ 恢復
+               </Button>
+             </div>
+             
              <div className="grid grid-cols-2 gap-4">{[1000,500,100,50,10,5,1].map(d => (
                <div key={d} className="flex justify-between items-center border-b border-zinc-900 pb-1">
                  <span className="text-zinc-500 w-12 font-mono">{d}</span>
@@ -482,7 +577,7 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
             <Input label="明日找零 (保留)" type="number" value={closingFloat} onChange={(e:any)=>setClosingFloat(parseFloat(e.target.value))} />
             <Input label="經手人 (Staff)" value={staffName} onChange={(e:any)=>setStaffName(e.target.value)} />
             <div className="flex justify-between border-t border-zinc-800 pt-4"><span className="text-zinc-500 font-bold uppercase tracking-widest">今日提領</span><span className="text-xl font-bold text-white font-mono">{formatCurrency(cashDrop)}</span></div>
-            <div className="flex gap-4 pt-4"><Button variant="ghost" onClick={()=>setStep(2)} className="flex-1">上一步</Button><Button onClick={handleFinish} className="flex-[2] h-14 border-2" disabled={(variance!==0&&!reason)||!staffName}>完成結帳</Button></div>
+            <div className="flex gap-4 pt-4"><Button variant="ghost" onClick={()=>setStep(2)} className="flex-1">上一步</Button><Button onClick={handleFinish} className="flex-[2] h-14 border-2" disabled={(variance!==0&&!reason)||!staffName||isSubmitting}>{isSubmitting ? '⏳ 上傳中...' : '完成結帳'}</Button></div>
           </div>
         )}
       </Card>
@@ -532,6 +627,145 @@ const HistoryView = ({ onNavigate }: any) => {
           ))}
         </div>
       </div>
+    </div>
+  );
+};
+
+// 🗂️ 點鈔機歷史紀錄頁面
+const BillsHistoryView = ({ onNavigate }: any) => {
+  const [history, setHistory] = useState<any[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('billsHistory') || '[]');
+      setHistory(saved.reverse()); // 最新在上面
+    } catch (e) {
+      showToast('無法讀取歷史紀錄', 'error');
+    }
+  }, []);
+
+  const handleUpload = async (item: any, index: number) => {
+    try {
+      // 上傳到 Google Sheet (透過 Firebase 觸發)
+      const billsRecord = {
+        date: item.date,
+        time: item.time,
+        bills_json: JSON.stringify(item.bills),
+        actual_counted: item.actualCounted,
+        closing_float: item.closingFloat,
+        variance: item.variance,
+        staff_name: item.staffName,
+        timestamp: serverTimestamp()
+      };
+      
+      await addDoc(collection(db, 'bills_history'), billsRecord);
+      
+      // 更新本地記錄為已同步
+      const updated = [...history];
+      updated[index].synced = true;
+      updated[index].syncTime = new Date().toLocaleTimeString('zh-TW');
+      setHistory(updated);
+      localStorage.setItem('billsHistory', JSON.stringify(updated.reverse()));
+      
+      showToast('✅ 已上傳到 Google Sheet', 'success');
+    } catch (e) {
+      showToast('❌ 上傳失敗：' + (e as any).message, 'error');
+    }
+  };
+
+  const handleDelete = (index: number) => {
+    if (!confirm(`確定要刪除 ${history[index].date} 的點鈔機記錄嗎？`)) return;
+    
+    const updated = history.filter((_, i) => i !== index);
+    setHistory(updated);
+    localStorage.setItem('billsHistory', JSON.stringify(updated.reverse()));
+    showToast('✅ 已刪除', 'success');
+  };
+
+  return (
+    <div className="animate-fade-in">
+      <PageHeader title="BILLS HISTORY" subtitle="點鈔機歷史紀錄" onBack={() => onNavigate('dashboard')} />
+      
+      <Card className="mb-4">
+        <div className="text-xs text-zinc-500 font-mono">
+          <p>💡 提示：所有點鈔機記錄會自動保存。</p>
+          <p>✅ 確認無誤後，可上傳至 Google Sheet 或手動刪除。</p>
+        </div>
+      </Card>
+
+      {history.length === 0 ? (
+        <Card><div className="text-center text-zinc-600 py-8">無點鈔機記錄</div></Card>
+      ) : (
+        <div className="space-y-3">
+          {history.map((item, index) => (
+            <div key={item.date + item.time} className="border-2 border-zinc-800 bg-black">
+              <div 
+                className="p-4 flex items-center justify-between cursor-pointer hover:bg-zinc-900 transition-colors"
+                onClick={() => setExpandedId(expandedId === (item.date + item.time) ? null : (item.date + item.time))}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 ${item.synced ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                  <div>
+                    <h4 className="text-white font-bold">{item.date}</h4>
+                    <p className="text-xs text-zinc-500">{item.time} • {item.staffName}</p>
+                  </div>
+                </div>
+                <span className="text-white font-mono font-bold">{formatCurrency(item.actualCounted)}</span>
+              </div>
+
+              {expandedId === (item.date + item.time) && (
+                <div className="bg-zinc-900/30 p-4 border-t border-zinc-800 text-sm font-mono space-y-2 animate-fade-in">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {Object.entries(item.bills).map(([denom, count]: [string, any]) => (
+                      count > 0 && (
+                        <div key={denom} className="flex justify-between text-zinc-400">
+                          <span>${denom}</span>
+                          <span>{count}x = {formatCurrency(parseInt(denom) * count)}</span>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                  
+                  <div className="border-t border-zinc-800 pt-2 mt-2 space-y-1 text-xs">
+                    <div className="flex justify-between"><span className="text-zinc-400">實際點算</span><span className="text-white">{formatCurrency(item.actualCounted)}</span></div>
+                    <div className="flex justify-between"><span className="text-zinc-400">明日保留</span><span className="text-white">{formatCurrency(item.closingFloat)}</span></div>
+                    <div className={`flex justify-between ${item.variance === 0 ? 'text-green-500' : 'text-yellow-500'}`}>
+                      <span>差異</span><span>{item.variance > 0 ? '+' : ''}{item.variance}</span>
+                    </div>
+                  </div>
+
+                  {item.synced && (
+                    <div className="text-[10px] text-green-500 pt-2 border-t border-zinc-800">
+                      ✓ 已同步 {item.syncTime}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-4 border-t border-zinc-800">
+                    {!item.synced && (
+                      <Button 
+                        onClick={() => handleUpload(item, index)}
+                        className="flex-1 text-xs"
+                        variant="secondary"
+                      >
+                        📤 上傳 Google Sheet
+                      </Button>
+                    )}
+                    <Button 
+                      onClick={() => handleDelete(index)}
+                      className="flex-1 text-xs"
+                      variant="danger"
+                    >
+                      🗑️ 刪除
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -688,6 +922,7 @@ const App = () => {
           {view === 'expense' && <ExpenseForm onCancel={() => setView('dashboard')} onSuccess={() => setView('dashboard')} />}
           {view === 'closing' && <ClosingWizard transactions={transactions} expenses={expenses} lastClosingFloat={lastClosingFloat} onCancel={() => setView('dashboard')} onSuccess={() => setView('dashboard')} />}
           {view === 'history' && <HistoryView onNavigate={setView} />}
+          {view === 'billsHistory' && <BillsHistoryView onNavigate={setView} />}
           {view === 'settings' && <SettingsView currentConfig={feeConfig} onSave={(c:any) => { setFeeConfig(c); setView('dashboard'); }} onCancel={() => setView('dashboard')} />}
         </main>
         <PinModal isOpen={pinModalOpen} onClose={() => setPinModalOpen(false)} onVerify={executeVoid} />
