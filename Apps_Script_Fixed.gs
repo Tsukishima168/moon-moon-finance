@@ -104,8 +104,8 @@ function initializeSpreadsheet() {
   const expSheet = createSheetIfNotExists(ss, "📋 支出紀錄明細", [
     "日期", "成本屬性", "支出類別", "品項", "支付方式", "金額", "備註"
   ]);
-  // 使用 QUERY 自動抓取所有支出
-  expSheet.getRange("A2").setFormula(`=IFERROR(QUERY('🔴 Raw_Transactions'!A:M, "SELECT A, '', H, L, I, K WHERE G='支出' AND M='VALID'", 1), "")`);
+  // 使用 QUERY 自動抓取所有支出 (修正版本)
+  expSheet.getRange("A2").setFormula(`=IFERROR(QUERY('🔴 Raw_Transactions'!A:M, "SELECT A, H, H, L, I, K WHERE G='支出' AND M='VALID'"), "")`);
 
 
   // 6. 🟡 月損益表 (P&L)
@@ -119,17 +119,49 @@ function initializeSpreadsheet() {
   if(plSheet.getLastRow() === 1) {
     plSheet.getRange(2, 1, plLabels.length, 1).setValues(plLabels).setFontWeight("bold");
     
-    // 自動寫入公式 (以1月為例)
-    const m = "01";
-    plSheet.getRange("B3").setFormula(`=SUMIFS('🔴 Raw_Transactions'!$I:$I, '🔴 Raw_Transactions'!$B:$B, "${currentYear}", '🔴 Raw_Transactions'!$C:$C, "${m}", '🔴 Raw_Transactions'!$G:$G, "營收", '🔴 Raw_Transactions'!$M:$M, "VALID")`);
-    plSheet.getRange("B4").setFormula(`=SUMIFS('🔴 Raw_Transactions'!$J:$J, '🔴 Raw_Transactions'!$B:$B, "${currentYear}", '🔴 Raw_Transactions'!$C:$C, "${m}", '🔴 Raw_Transactions'!$M:$M, "VALID")`);
-    plSheet.getRange("B5").setFormula(`=B3-B4`);
-    plSheet.getRange("B8").setFormula(`=ABS(SUMIFS('🔴 Raw_Transactions'!$I:$I, '🔴 Raw_Transactions'!$B:$B, "${currentYear}", '🔴 Raw_Transactions'!$C:$C, "${m}", '🔴 Raw_Transactions'!$G:$G, "支出", '🔴 Raw_Transactions'!$M:$M, "VALID"))`);
-    plSheet.getRange("B9").setFormula(`=B5-B8`);
-    plSheet.getRange("B12").setFormula(`=SUMIFS('🔵 固定成本_FixedCosts'!$E:$E, '🔵 固定成本_FixedCosts'!$A:$A, "${currentYear}", '🔵 固定成本_FixedCosts'!$B:$B, "${m}", '🔵 固定成本_FixedCosts'!$C:$C, "租金支出")`);
-    plSheet.getRange("B13").setFormula(`=SUMIFS('🔵 固定成本_FixedCosts'!$E:$E, '🔵 固定成本_FixedCosts'!$A:$A, "${currentYear}", '🔵 固定成本_FixedCosts'!$B:$B, "${m}", '🔵 固定成本_FixedCosts'!$C:$C, "人事支出")`);
-    plSheet.getRange("B14").setFormula(`=SUMIFS('🔵 固定成本_FixedCosts'!$E:$E, '🔵 固定成本_FixedCosts'!$A:$A, "${currentYear}", '🔵 固定成本_FixedCosts'!$B:$B, "${m}", '🔵 固定成本_FixedCosts'!$C:$C, "水電費") + SUMIFS('🔵 固定成本_FixedCosts'!$E:$E, '🔵 固定成本_FixedCosts'!$A:$A, "${currentYear}", '🔵 固定成本_FixedCosts'!$B:$B, "${m}", '🔵 固定成本_FixedCosts'!$C:$C, "電信網路")`);
-    plSheet.getRange("B17").setFormula(`=B9-SUM(B12:B15)`);
+    // 自動寫入公式 (所有 12 個月)
+    for (let month = 1; month <= 12; month++) {
+      const m = String(month).padStart(2, '0');
+      const col = String.fromCharCode(66 + month - 1); // B=66, C=67... M=77
+      
+      // 營業額 (第 3 行)
+      plSheet.getRange(`${col}3`).setFormula(`=SUMIFS('🔴 Raw_Transactions'!$I:$I, '🔴 Raw_Transactions'!$B:$B, "${currentYear}", '🔴 Raw_Transactions'!$C:$C, "${m}", '🔴 Raw_Transactions'!$G:$G, "營收", '🔴 Raw_Transactions'!$M:$M, "VALID")`);
+      
+      // 平台手續費 (第 4 行)
+      plSheet.getRange(`${col}4`).setFormula(`=SUMIFS('🔴 Raw_Transactions'!$J:$J, '🔴 Raw_Transactions'!$B:$B, "${currentYear}", '🔴 Raw_Transactions'!$C:$C, "${m}", '🔴 Raw_Transactions'!$M:$M, "VALID")`);
+      
+      // 實際營收 (第 5 行)
+      plSheet.getRange(`${col}5`).setFormula(`=${col}3-${col}4`);
+      
+      // 食材/包材支出 (第 8 行)
+      plSheet.getRange(`${col}8`).setFormula(`=ABS(SUMIFS('🔴 Raw_Transactions'!$I:$I, '🔴 Raw_Transactions'!$B:$B, "${currentYear}", '🔴 Raw_Transactions'!$C:$C, "${m}", '🔴 Raw_Transactions'!$G:$G, "支出", '🔴 Raw_Transactions'!$M:$M, "VALID"))`);
+      
+      // 營業毛利 (第 9 行)
+      plSheet.getRange(`${col}9`).setFormula(`=${col}5-${col}8`);
+      
+      // 店面租金 (第 12 行)
+      plSheet.getRange(`${col}12`).setFormula(`=SUMIFS('🔵 固定成本_FixedCosts'!$E:$E, '🔵 固定成本_FixedCosts'!$A:$A, "${currentYear}", '🔵 固定成本_FixedCosts'!$B:$B, "${m}", '🔵 固定成本_FixedCosts'!$C:$C, "租金支出")`);
+      
+      // 人事薪資 (第 13 行)
+      plSheet.getRange(`${col}13`).setFormula(`=SUMIFS('🔵 固定成本_FixedCosts'!$E:$E, '🔵 固定成本_FixedCosts'!$A:$A, "${currentYear}", '🔵 固定成本_FixedCosts'!$B:$B, "${m}", '🔵 固定成本_FixedCosts'!$C:$C, "人事支出")`);
+      
+      // 水電/雜支 (第 14 行)
+      plSheet.getRange(`${col}14`).setFormula(`=SUMIFS('🔵 固定成本_FixedCosts'!$E:$E, '🔵 固定成本_FixedCosts'!$A:$A, "${currentYear}", '🔵 固定成本_FixedCosts'!$B:$B, "${m}", '🔵 固定成本_FixedCosts'!$C:$C, "水電費")+SUMIFS('🔵 固定成本_FixedCosts'!$E:$E, '🔵 固定成本_FixedCosts'!$A:$A, "${currentYear}", '🔵 固定成本_FixedCosts'!$B:$B, "${m}", '🔵 固定成本_FixedCosts'!$C:$C, "電信網路")`);
+      
+      // 本期淨利 (第 17 行)
+      plSheet.getRange(`${col}17`).setFormula(`=${col}9-${col}12-${col}13-${col}14`);
+    }
+    
+    // 年度總計 (第 O 列)
+    plSheet.getRange("O3").setFormula("=SUM(B3:M3)");
+    plSheet.getRange("O4").setFormula("=SUM(B4:M4)");
+    plSheet.getRange("O5").setFormula("=SUM(B5:M5)");
+    plSheet.getRange("O8").setFormula("=SUM(B8:M8)");
+    plSheet.getRange("O9").setFormula("=SUM(B9:M9)");
+    plSheet.getRange("O12").setFormula("=SUM(B12:M12)");
+    plSheet.getRange("O13").setFormula("=SUM(B13:M13)");
+    plSheet.getRange("O14").setFormula("=SUM(B14:M14)");
+    plSheet.getRange("O17").setFormula("=O9-O12-O13-O14");
   }
 
   // 7. 🟢 成本卡標準 (Cost Standard)
