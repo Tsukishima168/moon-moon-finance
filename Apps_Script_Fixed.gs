@@ -104,8 +104,8 @@ function initializeSpreadsheet() {
   const expSheet = createSheetIfNotExists(ss, "📋 支出紀錄明細", [
     "日期", "成本屬性", "支出類別", "品項", "支付方式", "金額", "備註"
   ]);
-  // 使用 QUERY 自動抓取所有支出 (修正版本)
-  expSheet.getRange("A2").setFormula(`=IFERROR(QUERY('🔴 Raw_Transactions'!A:M, "SELECT A, H, H, L, I, K WHERE G='支出' AND M='VALID'"), "")`);
+  // 使用 FILTER 自動抓取所有支出 (更簡單可靠的方式)
+  expSheet.getRange("A2").setFormula(`=IFERROR(FILTER('🔴 Raw_Transactions'!A:M, ('🔴 Raw_Transactions'!$G:$G="支出")*('🔴 Raw_Transactions'!$M:$M="VALID")), "")`);
 
 
   // 6. 🟡 月損益表 (P&L)
