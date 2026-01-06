@@ -395,7 +395,6 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
   const [step, setStep] = useState(1);
   const [openingFloat, setOpeningFloat] = useState(lastClosingFloat || 5110);
   const [closingFloat, setClosingFloat] = useState(5110);
-  const [actualCounted, setActualCounted] = useState(0);
   
   const [bills, setBills] = useState<any>(() => {
     try {
@@ -532,11 +531,8 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
   }, [calculatedActualCounted, closingFloat]);
 
   // ==========================================
-  // 🎯 重要！自動同步實際點算金額
+  // 🎯 注意：實際點算金額由 calculatedActualCounted 計算得出
   // ==========================================
-  useEffect(() => {
-    setActualCounted(calculatedActualCounted);
-  }, [calculatedActualCounted]);
 
   const handleFinish = async () => {
     // 驗證
