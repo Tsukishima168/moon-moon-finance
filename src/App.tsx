@@ -34,7 +34,8 @@ import {
   Lock,
   AlertTriangle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Wallet
 } from 'lucide-react';
 
 // ==========================================
@@ -115,6 +116,17 @@ interface DailyClosing {
   closing_float: number;
   staff_name: string;
   status: 'COMPLETED';
+}
+
+interface CashBagRecord {
+  id: string;
+  date: string;
+  type: 'INITIAL' | 'ADJUSTMENT' | 'DAILY_CLOSING';
+  amount: number;
+  direction: 'TO_DRAWER' | 'FROM_DRAWER';
+  bills_breakdown: Record<number, number>;
+  note?: string;
+  created_at: any;
 }
 
 // --- Helpers ---
@@ -275,6 +287,7 @@ const Dashboard = ({ transactions, expenses, lastClosingFloat, onNavigate, onVoi
         <Button onClick={() => onNavigate('income')} className="h-24 hover:bg-zinc-900 border-2 flex-col gap-2"><Plus size={24} /><span className="text-xs tracking-wider">營收</span></Button>
         <Button onClick={() => onNavigate('expense')} className="h-24 hover:bg-zinc-900 border-2 flex-col gap-2"><Minus size={24} /><span className="text-xs tracking-wider">支出</span></Button>
         <Button onClick={() => onNavigate('closing')} variant="secondary" className="h-24 border-2 flex-col gap-2"><CheckSquare size={24} /><span className="text-xs tracking-wider">日結</span></Button>
+        <Button onClick={() => onNavigate('cashbag')} variant="secondary" className="h-24 border-2 flex-col gap-2"><Wallet size={24} /><span className="text-xs tracking-wider">零用金</span></Button>
         <Button onClick={() => onNavigate('history')} variant="secondary" className="h-24 border-2 flex-col gap-2"><History size={24} /><span className="text-xs tracking-wider">紀錄</span></Button>
       </div>
       <TransactionList items={allItems} onVoid={onVoidItem} />
@@ -877,6 +890,328 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
   );
 };
 
+// ==========================================
+// 💰 零用金錢袋管理系統
+// ==========================================
+const CashBagManager = ({ onNavigate, dailyClosings }: any) => {
+  const [monthlyInitial, setMonthlyInitial] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cashBagMonthlyInitial');
+      return saved ? JSON.parse(saved) : { bills: { 1000: 15, 500: 0, 100: 0, 50: 0, 10: 0, 5: 0, 1: 0 }, coins: 4720 };
+    } catch (e) {
+      return { bills: { 1000: 15, 500: 0, 100: 0, 50: 0, 10: 0, 5: 0, 1: 0 }, coins: 4720 };
+    }
+  });
+  
+  const [targetDrawerFloat, setTargetDrawerFloat] = useState(5110);
+  const [todayActualCounted, setTodayActualCounted] = useState(0);
+  const [cashBagRecords, setCashBagRecords] = useState<CashBagRecord[]>([]);
+  const [selectedDate, setSelectedDate] = useState(getTodayString());
+  
+  const { showToast } = useToast();
+
+  // 計算需要補/收的金額
+  const adjustmentNeeded = useMemo(() => {
+    return targetDrawerFloat - todayActualCounted;
+  }, [targetDrawerFloat, todayActualCounted]);
+
+  // 計算需要補/收的紙鈔和零錢明細
+  const adjustmentBreakdown = useMemo(() => {
+    if (adjustmentNeeded === 0) return { bills: {}, coins: 0, total: 0 };
+    
+    const needed = Math.abs(adjustmentNeeded);
+    const breakdown: Record<number, number> = {};
+    const denominations = [1000, 500, 100, 50, 10, 5, 1];
+    
+    let remaining = needed;
+    for (const denom of denominations) {
+      if (remaining >= denom) {
+        breakdown[denom] = Math.floor(remaining / denom);
+        remaining = remaining % denom;
+      } else {
+        breakdown[denom] = 0;
+      }
+    }
+    
+    return {
+      bills: breakdown,
+      coins: remaining, // 理論上應該為 0，但保留以防萬一
+      total: needed
+    };
+  }, [adjustmentNeeded]);
+
+  // 計算零用金錢袋的現金餘額（應該是多少）
+  const cashBagBalance = useMemo(() => {
+    // 初始金額
+    const initialBillsTotal = Object.keys(monthlyInitial.bills).reduce((sum, denom) => {
+      return sum + parseInt(denom) * monthlyInitial.bills[denom];
+    }, 0);
+    const initialTotal = initialBillsTotal + monthlyInitial.coins;
+    
+    // 累加所有從收銀台收到的現金（cash_drop）
+    const totalReceived = (dailyClosings || []).reduce((sum: number, closing: any) => {
+      return sum + (closing.cash_drop || 0);
+    }, 0);
+    
+    // 減去所有補到收銀台的金額（從記錄中計算）
+    const totalGiven = cashBagRecords
+      .filter(r => r.direction === 'TO_DRAWER')
+      .reduce((sum: number, r: CashBagRecord) => sum + r.amount, 0);
+    
+    // 加上所有從收銀台收到的金額
+    const totalReceivedFromDrawer = cashBagRecords
+      .filter(r => r.direction === 'FROM_DRAWER')
+      .reduce((sum: number, r: CashBagRecord) => sum + r.amount, 0);
+    
+    return initialTotal - totalGiven + totalReceivedFromDrawer + totalReceived;
+  }, [monthlyInitial, dailyClosings, cashBagRecords]);
+
+  // 載入當日的日結資料
+  useEffect(() => {
+    const todayClosing = (dailyClosings || []).find((c: any) => c.date === selectedDate);
+    if (todayClosing) {
+      setTodayActualCounted(todayClosing.actual_counted || 0);
+    } else {
+      setTodayActualCounted(0);
+    }
+  }, [selectedDate, dailyClosings]);
+
+  // 載入現金流動記錄
+  useEffect(() => {
+    const loadRecords = async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'cash_bag_records'), orderBy('date', 'desc'), limit(100)));
+        setCashBagRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as CashBagRecord)));
+      } catch (e) {
+        console.error('Failed to load cash bag records:', e);
+      }
+    };
+    loadRecords();
+  }, []);
+
+  const handleSaveAdjustment = async () => {
+    if (adjustmentNeeded === 0) {
+      showToast('無需調整', 'error');
+      return;
+    }
+
+    try {
+      const record: Omit<CashBagRecord, 'id' | 'created_at'> = {
+        date: selectedDate,
+        type: 'DAILY_CLOSING',
+        amount: Math.abs(adjustmentNeeded),
+        direction: adjustmentNeeded > 0 ? 'TO_DRAWER' : 'FROM_DRAWER',
+        bills_breakdown: adjustmentBreakdown.bills,
+        note: `收銀台歸零調整（目標：${targetDrawerFloat}，實際：${todayActualCounted}）`,
+      };
+
+      await addDoc(collection(db, 'cash_bag_records'), {
+        ...record,
+        created_at: serverTimestamp(),
+      });
+
+      showToast('調整記錄已儲存', 'success');
+      
+      // 重新載入記錄
+      const snap = await getDocs(query(collection(db, 'cash_bag_records'), orderBy('date', 'desc'), limit(100)));
+      setCashBagRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as CashBagRecord)));
+    } catch (e) {
+      showToast('儲存失敗', 'error');
+    }
+  };
+
+  const handleSaveMonthlyInitial = () => {
+    localStorage.setItem('cashBagMonthlyInitial', JSON.stringify(monthlyInitial));
+    showToast('每月初始設定已儲存', 'success');
+  };
+
+  return (
+    <div className="animate-fade-in max-w-4xl mx-auto space-y-6">
+      <PageHeader title="零用金錢袋" subtitle="現金流動管理" onBack={() => onNavigate('dashboard')} />
+      
+      {/* 每月初始設定 */}
+      <Card>
+        <h3 className="text-lg font-bold text-white mb-4">📅 每月初始設定</h3>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">紙鈔</label>
+              <div className="space-y-2">
+                {[1000, 500, 100, 50, 10, 5, 1].map(denom => (
+                  <div key={denom} className="flex items-center justify-between">
+                    <span className="text-zinc-400">{denom} 元</span>
+                    <input
+                      type="number"
+                      value={monthlyInitial.bills[denom] || 0}
+                      onChange={(e) => setMonthlyInitial({
+                        ...monthlyInitial,
+                        bills: { ...monthlyInitial.bills, [denom]: parseInt(e.target.value) || 0 }
+                      })}
+                      className="w-20 bg-black border-b-2 border-zinc-800 text-white text-right focus:outline-none focus:border-white"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">零錢</label>
+              <Input
+                type="number"
+                value={monthlyInitial.coins}
+                onChange={(e: any) => setMonthlyInitial({ ...monthlyInitial, coins: parseFloat(e.target.value) || 0 })}
+                placeholder="0"
+              />
+              <div className="mt-4 p-3 bg-zinc-900/50 border border-zinc-800 rounded">
+                <div className="text-xs text-zinc-500 mb-1">初始總額</div>
+                <div className="text-xl font-bold text-white font-mono">
+                  {formatCurrency(
+                    Object.keys(monthlyInitial.bills).reduce((sum, denom) => 
+                      sum + parseInt(denom) * monthlyInitial.bills[denom], 0
+                    ) + monthlyInitial.coins
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          <Button onClick={handleSaveMonthlyInitial} variant="secondary" className="w-full">儲存初始設定</Button>
+        </div>
+      </Card>
+
+      {/* 每日調整計算 */}
+      <Card>
+        <h3 className="text-lg font-bold text-white mb-4">💰 每日收銀台歸零計算</h3>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">選擇日期</label>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e: any) => setSelectedDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">目標找零金</label>
+              <Input
+                type="number"
+                value={targetDrawerFloat}
+                onChange={(e: any) => setTargetDrawerFloat(parseFloat(e.target.value) || 5110)}
+                placeholder="5110"
+              />
+            </div>
+          </div>
+
+          <div className="p-4 bg-zinc-900/50 border-2 border-zinc-800 rounded">
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <div className="text-xs text-zinc-500 mb-1">收銀台實際點算</div>
+                <div className="text-2xl font-bold text-white font-mono">{formatCurrency(todayActualCounted)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-500 mb-1">目標找零金</div>
+                <div className="text-2xl font-bold text-white font-mono">{formatCurrency(targetDrawerFloat)}</div>
+              </div>
+            </div>
+            
+            <div className={`p-4 rounded border-2 ${adjustmentNeeded > 0 ? 'bg-yellow-900/20 border-yellow-900' : adjustmentNeeded < 0 ? 'bg-green-900/20 border-green-900' : 'bg-zinc-900/20 border-zinc-800'}`}>
+              <div className="text-xs text-zinc-500 mb-1">
+                {adjustmentNeeded > 0 ? '需要補到收銀台' : adjustmentNeeded < 0 ? '需要從收銀台收回' : '無需調整'}
+              </div>
+              <div className={`text-3xl font-bold font-mono ${adjustmentNeeded > 0 ? 'text-yellow-400' : adjustmentNeeded < 0 ? 'text-green-400' : 'text-white'}`}>
+                {adjustmentNeeded > 0 ? '+' : ''}{formatCurrency(adjustmentNeeded)}
+              </div>
+            </div>
+          </div>
+
+          {/* 紙鈔和零錢明細 */}
+          {adjustmentNeeded !== 0 && (
+            <div className="p-4 bg-black border-2 border-zinc-800 rounded">
+              <h4 className="text-sm font-bold text-white mb-3">
+                {adjustmentNeeded > 0 ? '📤 補到收銀台' : '📥 從收銀台收回'} - 紙鈔零錢明細
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs text-zinc-500 mb-2">紙鈔</div>
+                  <div className="space-y-1">
+                    {[1000, 500, 100, 50, 10, 5, 1].map(denom => {
+                      const count = adjustmentBreakdown.bills[denom] || 0;
+                      if (count === 0) return null;
+                      return (
+                        <div key={denom} className="flex justify-between text-sm">
+                          <span className="text-zinc-400">{denom} 元</span>
+                          <span className="text-white font-mono font-bold">{count} 張</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-zinc-500 mb-2">小計</div>
+                  <div className="text-xl font-bold text-white font-mono">
+                    {formatCurrency(adjustmentBreakdown.total)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <Button
+            onClick={handleSaveAdjustment}
+            disabled={adjustmentNeeded === 0}
+            className="w-full"
+          >
+            {adjustmentNeeded > 0 ? '📤 記錄：補到收銀台' : adjustmentNeeded < 0 ? '📥 記錄：從收銀台收回' : '無需調整'}
+          </Button>
+        </div>
+      </Card>
+
+      {/* 零用金錢袋餘額 */}
+      <Card>
+        <h3 className="text-lg font-bold text-white mb-4">💵 零用金錢袋現金餘額</h3>
+        <div className="p-6 bg-white text-black border-2 border-white rounded">
+          <div className="text-xs font-bold text-black uppercase tracking-widest mb-2">應有餘額</div>
+          <div className="text-4xl font-bold font-mono">{formatCurrency(cashBagBalance)}</div>
+          <div className="text-xs text-zinc-600 mt-2">
+            初始：{formatCurrency(
+              Object.keys(monthlyInitial.bills).reduce((sum, denom) => 
+                sum + parseInt(denom) * monthlyInitial.bills[denom], 0
+              ) + monthlyInitial.coins
+            )} 
+            + 累計收到 - 累計補出
+          </div>
+        </div>
+      </Card>
+
+      {/* 現金流動記錄 */}
+      <Card>
+        <h3 className="text-lg font-bold text-white mb-4">📋 本月現金流動記錄</h3>
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {cashBagRecords.length === 0 ? (
+            <div className="p-8 text-center text-zinc-600 text-sm">尚無記錄</div>
+          ) : (
+            cashBagRecords.map((record: CashBagRecord) => (
+              <div key={record.id} className="p-3 bg-zinc-900/50 border border-zinc-800 rounded">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="text-white font-bold">{record.date}</div>
+                    <div className="text-xs text-zinc-500 mt-1">
+                      {record.direction === 'TO_DRAWER' ? '📤 補到收銀台' : '📥 從收銀台收回'}
+                    </div>
+                    {record.note && <div className="text-xs text-zinc-400 mt-1">{record.note}</div>}
+                  </div>
+                  <div className={`text-lg font-bold font-mono ${record.direction === 'TO_DRAWER' ? 'text-yellow-400' : 'text-green-400'}`}>
+                    {record.direction === 'TO_DRAWER' ? '-' : '+'}{formatCurrency(record.amount)}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
 const HistoryView = ({ onNavigate }: any) => {
   const [closings, setClosings] = useState<DailyClosing[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -1014,6 +1349,7 @@ const App = () => {
   const [lastClosingFloat, setLastClosingFloat] = useState(5110);
   const [feeConfig, setFeeConfig] = useState(DEFAULT_FEE_CONFIG);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [dailyClosings, setDailyClosings] = useState<DailyClosing[]>([]);
   
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [targetItem, setTargetItem] = useState<any>(null);
@@ -1060,7 +1396,19 @@ const App = () => {
       if (!snap.empty) setLastClosingFloat(snap.docs[0].data().closing_float);
     });
 
-    return () => { unsubTx(); unsubExp(); unsubSettings(); };
+    // 載入本月所有日結記錄（用於零用金錢袋計算）
+    const currentMonth = new Date().toISOString().substring(0, 7); // yyyy-MM
+    const unsubClosings = onSnapshot(
+      query(collection(db, 'daily_closings'), orderBy('date', 'desc'), limit(100)),
+      (snap) => {
+        const closings = snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as DailyClosing))
+          .filter(c => c.date.startsWith(currentMonth));
+        setDailyClosings(closings);
+      }
+    );
+
+    return () => { unsubTx(); unsubExp(); unsubSettings(); unsubClosings(); };
   }, [user]);
 
   const handleVoidRequest = (item: any) => { setTargetItem(item); setPinModalOpen(true); };
@@ -1115,6 +1463,7 @@ const App = () => {
           {view === 'income' && <IncomeForm feeConfig={feeConfig} onCancel={() => setView('dashboard')} onSuccess={() => setView('dashboard')} />}
           {view === 'expense' && <ExpenseForm onCancel={() => setView('dashboard')} onSuccess={() => setView('dashboard')} />}
           {view === 'closing' && <ClosingWizard transactions={transactions} expenses={expenses} lastClosingFloat={lastClosingFloat} onCancel={() => setView('dashboard')} onSuccess={() => setView('dashboard')} />}
+          {view === 'cashbag' && <CashBagManager dailyClosings={dailyClosings} onNavigate={setView} />}
           {view === 'history' && <HistoryView onNavigate={setView} />}
           {view === 'settings' && <SettingsView currentConfig={feeConfig} onSave={(c:any) => { setFeeConfig(c); setView('dashboard'); }} onCancel={() => setView('dashboard')} />}
         </main>
