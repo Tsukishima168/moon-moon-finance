@@ -1,3 +1,19 @@
+# Node / Vite build artifacts
+node_modules
+dist
+.vite
+
+# Local environment & secrets
+.env
+.env.*
+*.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
 # Logs
 logs
 *.log

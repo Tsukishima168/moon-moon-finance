@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 預設：禁止所有讀寫
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // transactions 集合規則
+    match /transactions/{transactionId} {
+      // 允許新增文件
+      allow create;
+
+      // 允許更新，但禁止修改 amount 欄位
+      // 條件：更新後的 amount 必須等於原本的 amount
+      allow update: if request.resource.data.amount == resource.data.amount;
+
+      // 其他操作（delete 等）維持預設 deny
+    }
+
+    // expenses 集合規則
+    match /expenses/{expenseId} {
+      // 允許新增文件
+      allow create;
+
+      // 允許更新，但禁止修改 amount 欄位
+      allow update: if request.resource.data.amount == resource.data.amount;
+
+      // 其他操作（delete 等）維持預設 deny
+    }
+
+    // daily_closings 集合規則
+    match /daily_closings/{closingId} {
+      // 盡量從規則層面限制：
+      // 1. 僅允許建立（create），不允許後續修改或刪除
+      // 2. 要求文件內至少要有 date 欄位（型別可依實際情況調整）
+
+      // 允許新增：文件必須包含 date 欄位
+      allow create: if
+        // 確保有 date 欄位（可以依你的 schema 改成 timestamp/string 等）
+        (request.resource.data.date is string || request.resource.data.date is timestamp);
+
+      // 不允許更新或刪除（避免同一天被人為調整）
+      allow update, delete: if false;
+
+      // 如需開放讀取，可在這裡放寬 read 規則，否則沿用預設 deny
+    }
+  }
+}
+
