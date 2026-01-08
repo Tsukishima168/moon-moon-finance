@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useMemo, createContext, useContext } from 'react';
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  onAuthStateChanged 
+import {
+  getAuth,
+  signInAnonymously,
+  onAuthStateChanged
 } from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  query, 
-  onSnapshot, 
-  orderBy, 
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  query,
+  onSnapshot,
+  orderBy,
   setDoc,
   updateDoc,
   doc,
@@ -21,12 +21,12 @@ import {
   getDocs,
   writeBatch
 } from 'firebase/firestore';
-import { 
-  Plus, 
-  Minus, 
-  CheckSquare, 
-  History, 
-  Settings, 
+import {
+  Plus,
+  Minus,
+  CheckSquare,
+  History,
+  Settings,
   ArrowRight,
   Wifi,
   WifiOff,
@@ -37,6 +37,13 @@ import {
   ChevronUp,
   Wallet
 } from 'lucide-react';
+
+// ==========================================
+// 🔗 Backend Configuration (LocalStorage)
+// ==========================================
+const getBackendUrl = () => localStorage.getItem('BACKEND_API_URL') || "";
+const setBackendUrl = (url: string) => localStorage.setItem('BACKEND_API_URL', url);
+
 
 // ==========================================
 // 🚀 Firebase 正式設定 (RubbyCake-Menu)
@@ -59,20 +66,20 @@ const db = getFirestore(app);
 // ==========================================
 // 📦 型別定義 (TypeScript Interfaces)
 // ==========================================
-const DEFAULT_FEE_CONFIG: any = { 
-  CASH: 0.00, 
-  LINEPAY: 0.025, 
-  UBER: 0.35, 
-  GOOGLE: 0.00, 
-  TRANSFER: 0.00 
+const DEFAULT_FEE_CONFIG: any = {
+  CASH: 0.00,
+  LINEPAY: 0.025,
+  UBER: 0.35,
+  GOOGLE: 0.00,
+  TRANSFER: 0.00
 };
 
-const CHANNEL_LABELS: Record<string, string> = { 
-  CASH: '現金', 
-  LINEPAY: 'LinePay', 
-  UBER: 'UberEats', 
-  GOOGLE: 'GooglePay', 
-  TRANSFER: '轉帳匯款' 
+const CHANNEL_LABELS: Record<string, string> = {
+  CASH: '現金',
+  LINEPAY: 'LinePay',
+  UBER: 'UberEats',
+  GOOGLE: 'GooglePay',
+  TRANSFER: '轉帳匯款'
 };
 
 type PaymentChannel = keyof typeof DEFAULT_FEE_CONFIG;
@@ -80,7 +87,7 @@ type PaymentChannel = keyof typeof DEFAULT_FEE_CONFIG;
 // 修正：定義在全域，解決 TS 找不到名稱的問題
 interface Transaction {
   id: string;
-  timestamp: any; 
+  timestamp: any;
   type: 'INCOME';
   channel: PaymentChannel;
   amount: number;
@@ -93,7 +100,7 @@ interface Transaction {
 
 interface Expense {
   id: string;
-  date: string; 
+  date: string;
   category: 'COGS' | 'OPEX';
   item: string;
   amount: number;
@@ -174,7 +181,7 @@ const ToastContainer = ({ toasts }: { toasts: any[] }) => (
   <div className="fixed bottom-4 left-0 right-0 z-50 flex flex-col items-center gap-2 pointer-events-none px-4">
     {toasts.map(t => (
       <div key={t.id} className="bg-zinc-900 border border-zinc-700 text-white px-6 py-3 shadow-2xl flex items-center gap-3 animate-fade-in-up">
-        {t.type === 'success' ? <CheckSquare size={16} className="text-green-500"/> : <AlertTriangle size={16} className="text-red-500"/>}
+        {t.type === 'success' ? <CheckSquare size={16} className="text-green-500" /> : <AlertTriangle size={16} className="text-red-500" />}
         <span className="font-bold text-sm tracking-wide">{t.msg}</span>
       </div>
     ))}
@@ -244,16 +251,16 @@ const Dashboard = ({ transactions, expenses, lastClosingFloat, onNavigate, onVoi
     const today = getTodayString();
     const validTx = transactions.filter((t: any) => {
       // 只計算今天的有效交易
-      const txDate = t.timestamp?.toDate ? t.timestamp.toDate().toISOString().split('T')[0] : 
-                     (t.timestamp?.seconds ? new Date(t.timestamp.seconds * 1000).toISOString().split('T')[0] : '');
+      const txDate = t.timestamp?.toDate ? t.timestamp.toDate().toISOString().split('T')[0] :
+        (t.timestamp?.seconds ? new Date(t.timestamp.seconds * 1000).toISOString().split('T')[0] : '');
       return txDate === today && t.status !== 'VOID' && t.status !== 'CLOSED';
     });
     const validExp = expenses.filter((e: any) => e.date === today && e.status !== 'VOID' && e.status !== 'CLOSED');
-    
+
     const gross = validTx.reduce((sum: number, t: any) => sum + t.amount, 0);
     const fees = validTx.reduce((sum: number, t: any) => sum + t.fee_amount, 0);
     const exp = validExp.reduce((sum: number, e: any) => sum + e.amount, 0);
-    
+
     // 🔒 只計算 CASH 渠道（與 ClosingWizard 一致）
     const cashSales = validTx.filter((t: any) => t.channel === 'CASH').reduce((sum: number, t: any) => sum + t.amount, 0);
     // 🔒 只計算從錢櫃支出的（與 ClosingWizard 一致）
@@ -277,7 +284,7 @@ const Dashboard = ({ transactions, expenses, lastClosingFloat, onNavigate, onVoi
           <Metric title="手續費" value={`-${formatCurrency(metrics.fees)}`} />
           <Metric title="支出" value={`-${formatCurrency(metrics.exp)}`} />
           <div className="bg-white p-5 flex flex-col justify-between h-28 border-b border-zinc-800 md:border-b-0">
-            <div className="flex justify-between items-start"><p className="text-[10px] font-bold text-black uppercase tracking-widest">應有現金</p><div className="w-2 h-2 bg-black"/></div>
+            <div className="flex justify-between items-start"><p className="text-[10px] font-bold text-black uppercase tracking-widest">應有現金</p><div className="w-2 h-2 bg-black" /></div>
             <h3 className="text-3xl font-bold text-black font-mono tracking-tighter">{formatCurrency(metrics.shouldHaveCash)}</h3>
           </div>
         </div>
@@ -338,14 +345,14 @@ const IncomeForm = ({ feeConfig, onCancel, onSuccess }: any) => {
               </button>
             ))}
           </div>
-          <Input label="金額" type="number" value={amount} onChange={(e:any) => setAmount(e.target.value)} placeholder="0" />
+          <Input label="金額" type="number" value={amount} onChange={(e: any) => setAmount(e.target.value)} placeholder="0" />
           <div className="border-2 border-zinc-800 p-4 space-y-2 text-sm bg-zinc-900/20 font-mono">
-             <div className="flex justify-between text-zinc-500"><span>GROSS</span><span>{formatCurrency(parseFloat(amount)||0)}</span></div>
-             <div className="flex justify-between text-zinc-500"><span>FEE</span><span>-{formatCurrency(calc.fee)}</span></div>
-             <div className="h-px bg-zinc-800 my-2"></div>
-             <div className="flex justify-between font-bold text-white text-lg"><span>NET</span><span>{formatCurrency(calc.net)}</span></div>
+            <div className="flex justify-between text-zinc-500"><span>GROSS</span><span>{formatCurrency(parseFloat(amount) || 0)}</span></div>
+            <div className="flex justify-between text-zinc-500"><span>FEE</span><span>-{formatCurrency(calc.fee)}</span></div>
+            <div className="h-px bg-zinc-800 my-2"></div>
+            <div className="flex justify-between font-bold text-white text-lg"><span>NET</span><span>{formatCurrency(calc.net)}</span></div>
           </div>
-          <Input label="備註 (選填)" value={note} onChange={(e:any) => setNote(e.target.value)} />
+          <Input label="備註 (選填)" value={note} onChange={(e: any) => setNote(e.target.value)} />
           <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full h-16 text-lg">{isSubmitting ? '...' : '確認入帳'}</Button>
         </div>
       </Card>
@@ -377,22 +384,22 @@ const ExpenseForm = ({ onCancel, onSuccess }: any) => {
       <Card>
         <div className="space-y-8">
           <div className="flex gap-4">
-             <div className="flex-1"><label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">類別</label>
-               <select className="w-full bg-black border-b-2 border-zinc-800 py-3 text-white focus:outline-none rounded-none"
-                  value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
-                  <option value="COGS">成本 (COGS)</option><option value="OPEX">營運 (OPEX)</option>
-                </select></div>
-             <div className="flex-1"><Input label="日期" type="date" value={form.date} onChange={(e:any) => setForm({...form, date: e.target.value})} /></div>
+            <div className="flex-1"><label className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 block">類別</label>
+              <select className="w-full bg-black border-b-2 border-zinc-800 py-3 text-white focus:outline-none rounded-none"
+                value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+                <option value="COGS">成本 (COGS)</option><option value="OPEX">營運 (OPEX)</option>
+              </select></div>
+            <div className="flex-1"><Input label="日期" type="date" value={form.date} onChange={(e: any) => setForm({ ...form, date: e.target.value })} /></div>
           </div>
-          <Input label="項目" value={form.item} onChange={(e:any) => setForm({...form, item: e.target.value})} />
-          <Input label="金額" type="number" value={form.amount} onChange={(e:any) => setForm({...form, amount: e.target.value})} />
+          <Input label="項目" value={form.item} onChange={(e: any) => setForm({ ...form, item: e.target.value })} />
+          <Input label="金額" type="number" value={form.amount} onChange={(e: any) => setForm({ ...form, amount: e.target.value })} />
           <div className="grid grid-cols-3 gap-3">
-             {[{ id: 'DRAWER', label: '錢櫃' }, { id: 'BANK', label: '銀行' }, { id: 'STAFF_POCKET', label: '代墊' }].map(src => (
-               <button key={src.id} onClick={() => setForm({...form, source: src.id})}
-                 className={`p-4 border-2 text-sm font-bold transition-all ${form.source === src.id ? 'bg-white text-black border-white' : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'}`}>
-                 {src.label}
-               </button>
-             ))}
+            {[{ id: 'DRAWER', label: '錢櫃' }, { id: 'BANK', label: '銀行' }, { id: 'STAFF_POCKET', label: '代墊' }].map(src => (
+              <button key={src.id} onClick={() => setForm({ ...form, source: src.id })}
+                className={`p-4 border-2 text-sm font-bold transition-all ${form.source === src.id ? 'bg-white text-black border-white' : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'}`}>
+                {src.label}
+              </button>
+            ))}
           </div>
           <Button onClick={handleSubmit} variant="secondary" disabled={isSubmitting} className="w-full h-16 text-lg">確認支出</Button>
         </div>
@@ -408,7 +415,7 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
   const [step, setStep] = useState(1);
   const [openingFloat, setOpeningFloat] = useState(lastClosingFloat || 5110);
   const [closingFloat, setClosingFloat] = useState(5110);
-  
+
   const [bills, setBills] = useState<any>(() => {
     try {
       const saved = localStorage.getItem('billsBackup');
@@ -417,14 +424,14 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
       return { 1000: 0, 500: 0, 100: 0, 50: 0, 10: 0, 5: 0, 1: 0 };
     }
   });
-  
+
   const [reason, setReason] = useState('');
   const [staffName, setStaffName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // 🎯 新增：詳細的調試信息面板
   const [showDebug, setShowDebug] = useState(false);
-  
+
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -444,7 +451,7 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
   // ==========================================
   // 🎯 關鍵修復：只計算現金相關的金額（過濾其他渠道）
   // ==========================================
-  
+
   // 1️⃣ 現金營收（ONLY CASH）
   const cashSales = useMemo(() => {
     const today = getTodayString(); // 使用統一的日期格式 yyyy-MM-dd
@@ -458,12 +465,12 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
       } else {
         return false; // 沒有時間戳，跳過
       }
-      
+
       const isToday = txDate === today;
       const isCash = t.channel === 'CASH';
       const isValid = t.status === 'VALID';
       const isIncome = t.type === 'INCOME';
-      
+
       return (
         isCash &&           // ✅ 只要現金（排除 LINEPAY, UBER, GOOGLE, TRANSFER）
         isValid &&          // ✅ 只要有效交易（排除 VOID, CLOSED）
@@ -472,15 +479,15 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
       );
     });
     const sum = valid.reduce((a: number, c: any) => a + c.amount, 0);
-    
+
     // 📍 調試信息（幫助排查問題）
     console.log('🔍 現金營收計算（只算 CASH）：', {
       今天日期: today,
       總交易數: transactions.length,
       現金交易數: valid.length,
-      交易詳情: valid.map((t: any) => ({ 
-        金額: t.amount, 
-        渠道: t.channel, 
+      交易詳情: valid.map((t: any) => ({
+        金額: t.amount,
+        渠道: t.channel,
         狀態: t.status,
         日期: t.timestamp?.toDate ? t.timestamp.toDate().toISOString().split('T')[0] : 'N/A'
       })),
@@ -490,7 +497,7 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
         return txDate === today && t.channel !== 'CASH' && t.status === 'VALID' && t.type === 'INCOME';
       }).map((t: any) => ({ 渠道: t.channel, 金額: t.amount }))
     });
-    
+
     return sum;
   }, [transactions]);
 
@@ -505,18 +512,18 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
       );
     });
     const sum = valid.reduce((a: number, c: any) => a + c.amount, 0);
-    
+
     console.log('🔍 現金支出計算：', {
       交易筆數: valid.length,
-      交易詳情: valid.map((e: any) => ({ 
-        項目: e.item, 
-        金額: e.amount, 
-        來源: e.source, 
-        狀態: e.status 
+      交易詳情: valid.map((e: any) => ({
+        項目: e.item,
+        金額: e.amount,
+        來源: e.source,
+        狀態: e.status
       })),
       合計: sum
     });
-    
+
     return sum;
   }, [expenses]);
 
@@ -552,7 +559,7 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
     if (step === 3 && ((variance !== 0 && !reason) || !staffName)) {
       return showToast('請填寫差異原因與經手人', 'error');
     }
-    
+
     // 🎯 新增：最後檢查提醒（防止誤操作）
     if (Math.abs(variance) > 500) {
       const shouldContinue = confirm(
@@ -567,47 +574,47 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
     setIsSubmitting(true);
     try {
       const today = getTodayString();
-      
+
       // 🎯 清晰的計算紀錄
       const closingPayload = {
         date: today,
         opening_float: openingFloat,
-        
+
         // 💰 現金流明細（只含現金）
         total_cash_sales: cashSales,
         total_cash_expenses: cashExpenses,
-        
+
         // 📊 計算過程
         expected_drawer: expectedDrawer,
         actual_counted: calculatedActualCounted,
         variance: variance,
         variance_reason: reason,
-        
+
         // 💵 提領
         cash_drop: cashDrop,
         closing_float: closingFloat,
         staff_name: staffName,
         status: 'COMPLETED',
         timestamp: serverTimestamp(),
-        
+
         // 🎯 新增：詳細計算過程（用於審計）
         calculation_detail: {
-          cash_sales_count: transactions.filter((t: any) => 
+          cash_sales_count: transactions.filter((t: any) =>
             t.channel === 'CASH' && t.status === 'VALID' && t.type === 'INCOME'
           ).length,
-          cash_expense_count: expenses.filter((e: any) => 
+          cash_expense_count: expenses.filter((e: any) =>
             e.source === 'DRAWER' && e.status === 'VALID'
           ).length,
           bills_breakdown: bills,  // ✅ 鈔票組成
           notes: 'Only CASH channel included'
         }
       };
-      
+
       const batch = writeBatch(db);
-      
+
       // 保存日結記錄
       const closingRef = doc(db, 'daily_closings', today);
-      
+
       // 🎯 新增：防止重複日結
       const existing = await getDoc(closingRef);
       if (existing.exists()) {
@@ -615,9 +622,9 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
         setIsSubmitting(false);
         return;
       }
-      
+
       batch.set(closingRef, { ...closingPayload, closed_at: serverTimestamp(), finalized: true });
-      
+
       // 保存點鈔機歷史
       saveBillsHistory({
         date: today,
@@ -629,7 +636,7 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
         staffName: staffName,
         synced: false,
         syncTime: null,
-        
+
         // 🎯 新增：計算明細
         calculationDetail: {
           cashSales: cashSales,
@@ -637,7 +644,7 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
           expectedDrawer: expectedDrawer
         }
       });
-      
+
       // 標記當日交易為 CLOSED
       const txCol = collection(db, 'transactions');
       const txSnap = await getDocs(query(txCol, orderBy('timestamp', 'desc'), limit(500)));
@@ -650,7 +657,7 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
           batch.update(docRef, { status: 'CLOSED', closed_at: serverTimestamp() });
         }
       });
-      
+
       // 標記當日支出為 CLOSED
       const expCol = collection(db, 'expenses');
       const expSnap = await getDocs(query(expCol, orderBy('created_at', 'desc'), limit(500)));
@@ -661,13 +668,13 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
           batch.update(docRef, { status: 'CLOSED', closed_at: serverTimestamp() });
         }
       });
-      
+
       await batch.commit();
-      
+
       localStorage.removeItem('billsBackup');
       showToast('✅ 日結完成！資料已上傳 Firebase', 'success');
       onSuccess();
-    } catch (e) { 
+    } catch (e) {
       showToast('❌ 日結失敗：' + (e as any).message, 'error');
       console.error('Closing error:', e);
     } finally {
@@ -694,8 +701,8 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
             </div>
 
             {/* 調試按鈕 */}
-            <Button 
-              onClick={() => setShowDebug(!showDebug)} 
+            <Button
+              onClick={() => setShowDebug(!showDebug)}
               variant="ghost"
               className="w-full text-xs"
             >
@@ -779,9 +786,9 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-black border-2 border-zinc-800">
                 <p className="text-xs text-zinc-500 uppercase">開店金</p>
-                <input 
-                  type="number" 
-                  value={openingFloat} 
+                <input
+                  type="number"
+                  value={openingFloat}
                   onChange={e => setOpeningFloat(parseFloat(e.target.value))}
                   className="w-full bg-black text-white text-xl border-b border-zinc-800 focus:outline-none mt-2"
                 />
@@ -801,28 +808,28 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
               <h3 className="text-lg font-bold">點算現金</h3>
               <p className="text-2xl font-mono text-white">{formatCurrency(calculatedActualCounted)}</p>
             </div>
-            
+
             {/* 鈔票計數器 */}
             <div className="grid grid-cols-2 gap-4">
               {[1000, 500, 100, 50, 10, 5, 1].map(d => (
                 <div key={d} className="flex justify-between items-center border-b border-zinc-900 pb-1">
                   <span className="text-zinc-500 w-12 font-mono">{d}</span>
                   <div className="flex items-center text-white gap-2">
-                    <button 
-                      onClick={() => setBills((b: any) => ({...b, [d]: Math.max(0, b[d]-1)}))} 
+                    <button
+                      onClick={() => setBills((b: any) => ({ ...b, [d]: Math.max(0, b[d] - 1) }))}
                       className="w-8 h-8 flex items-center justify-center border border-zinc-800 active:bg-zinc-800"
                     >
                       -
                     </button>
-                    <input 
-                      type="number" 
-                      inputMode="decimal" 
+                    <input
+                      type="number"
+                      inputMode="decimal"
                       className="w-12 bg-black text-center text-white focus:outline-none border-b-2 border-zinc-800 focus:border-white"
-                      value={bills[d]} 
-                      onChange={e => setBills({...bills, [d]: parseInt(e.target.value)||0})}
+                      value={bills[d]}
+                      onChange={e => setBills({ ...bills, [d]: parseInt(e.target.value) || 0 })}
                     />
-                    <button 
-                      onClick={() => setBills((b: any) => ({...b, [d]: b[d]+1}))} 
+                    <button
+                      onClick={() => setBills((b: any) => ({ ...b, [d]: b[d] + 1 }))}
                       className="w-8 h-8 flex items-center justify-center border border-zinc-800 active:bg-zinc-800"
                     >
                       +
@@ -856,18 +863,18 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
 
             {variance !== 0 && (
               <div className="animate-pulse-once">
-                <Input 
-                  label="差異原因 (必填)" 
-                  value={reason} 
+                <Input
+                  label="差異原因 (必填)"
+                  value={reason}
                   onChange={(e: any) => setReason(e.target.value)}
                   placeholder="例：零錢不足、客人多算..."
                 />
               </div>
             )}
-            
+
             <Input label="明日找零 (保留)" type="number" value={closingFloat} onChange={(e: any) => setClosingFloat(parseFloat(e.target.value))} />
             <Input label="經手人 (Staff)" value={staffName} onChange={(e: any) => setStaffName(e.target.value)} />
-            
+
             <div className="flex justify-between border-t border-zinc-800 pt-4">
               <span className="text-zinc-500 font-bold uppercase tracking-widest">今日提領</span>
               <span className="text-xl font-bold text-white font-mono">{formatCurrency(cashDrop)}</span>
@@ -875,9 +882,9 @@ const ClosingWizard = ({ transactions, expenses, onCancel, onSuccess, lastClosin
 
             <div className="flex gap-4 pt-4">
               <Button variant="ghost" onClick={() => setStep(2)} className="flex-1">上一步</Button>
-              <Button 
-                onClick={handleFinish} 
-                className="flex-[2] h-14 border-2" 
+              <Button
+                onClick={handleFinish}
+                className="flex-[2] h-14 border-2"
                 disabled={(variance !== 0 && !reason) || !staffName || isSubmitting}
               >
                 {isSubmitting ? '⏳ 上傳中...' : '✅ 完成結帳'}
@@ -902,12 +909,12 @@ const CashBagManager = ({ onNavigate, dailyClosings }: any) => {
       return { bills: { 1000: 15, 500: 0, 100: 0, 50: 0, 10: 0, 5: 0, 1: 0 }, coins: 4720 };
     }
   });
-  
+
   const [targetDrawerFloat, setTargetDrawerFloat] = useState(5110);
   const [todayActualCounted, setTodayActualCounted] = useState(0);
   const [cashBagRecords, setCashBagRecords] = useState<CashBagRecord[]>([]);
   const [selectedDate, setSelectedDate] = useState(getTodayString());
-  
+
   const { showToast } = useToast();
 
   // 計算需要補/收的金額
@@ -918,11 +925,11 @@ const CashBagManager = ({ onNavigate, dailyClosings }: any) => {
   // 計算需要補/收的紙鈔和零錢明細
   const adjustmentBreakdown = useMemo(() => {
     if (adjustmentNeeded === 0) return { bills: {}, coins: 0, total: 0 };
-    
+
     const needed = Math.abs(adjustmentNeeded);
     const breakdown: Record<number, number> = {};
     const denominations = [1000, 500, 100, 50, 10, 5, 1];
-    
+
     let remaining = needed;
     for (const denom of denominations) {
       if (remaining >= denom) {
@@ -932,7 +939,7 @@ const CashBagManager = ({ onNavigate, dailyClosings }: any) => {
         breakdown[denom] = 0;
       }
     }
-    
+
     return {
       bills: breakdown,
       coins: remaining, // 理論上應該為 0，但保留以防萬一
@@ -947,22 +954,22 @@ const CashBagManager = ({ onNavigate, dailyClosings }: any) => {
       return sum + parseInt(denom) * monthlyInitial.bills[denom];
     }, 0);
     const initialTotal = initialBillsTotal + monthlyInitial.coins;
-    
+
     // 累加所有從收銀台收到的現金（cash_drop）
     const totalReceived = (dailyClosings || []).reduce((sum: number, closing: any) => {
       return sum + (closing.cash_drop || 0);
     }, 0);
-    
+
     // 減去所有補到收銀台的金額（從記錄中計算）
     const totalGiven = cashBagRecords
       .filter(r => r.direction === 'TO_DRAWER')
       .reduce((sum: number, r: CashBagRecord) => sum + r.amount, 0);
-    
+
     // 加上所有從收銀台收到的金額
     const totalReceivedFromDrawer = cashBagRecords
       .filter(r => r.direction === 'FROM_DRAWER')
       .reduce((sum: number, r: CashBagRecord) => sum + r.amount, 0);
-    
+
     return initialTotal - totalGiven + totalReceivedFromDrawer + totalReceived;
   }, [monthlyInitial, dailyClosings, cashBagRecords]);
 
@@ -1011,7 +1018,7 @@ const CashBagManager = ({ onNavigate, dailyClosings }: any) => {
       });
 
       showToast('調整記錄已儲存', 'success');
-      
+
       // 重新載入記錄
       const snap = await getDocs(query(collection(db, 'cash_bag_records'), orderBy('date', 'desc'), limit(100)));
       setCashBagRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as CashBagRecord)));
@@ -1028,7 +1035,7 @@ const CashBagManager = ({ onNavigate, dailyClosings }: any) => {
   return (
     <div className="animate-fade-in max-w-4xl mx-auto space-y-6">
       <PageHeader title="零用金錢袋" subtitle="現金流動管理" onBack={() => onNavigate('dashboard')} />
-      
+
       {/* 每月初始設定 */}
       <Card>
         <h3 className="text-lg font-bold text-white mb-4">📅 每月初始設定</h3>
@@ -1065,7 +1072,7 @@ const CashBagManager = ({ onNavigate, dailyClosings }: any) => {
                 <div className="text-xs text-zinc-500 mb-1">初始總額</div>
                 <div className="text-xl font-bold text-white font-mono">
                   {formatCurrency(
-                    Object.keys(monthlyInitial.bills).reduce((sum, denom) => 
+                    Object.keys(monthlyInitial.bills).reduce((sum, denom) =>
                       sum + parseInt(denom) * monthlyInitial.bills[denom], 0
                     ) + monthlyInitial.coins
                   )}
@@ -1112,7 +1119,7 @@ const CashBagManager = ({ onNavigate, dailyClosings }: any) => {
                 <div className="text-2xl font-bold text-white font-mono">{formatCurrency(targetDrawerFloat)}</div>
               </div>
             </div>
-            
+
             <div className={`p-4 rounded border-2 ${adjustmentNeeded > 0 ? 'bg-yellow-900/20 border-yellow-900' : adjustmentNeeded < 0 ? 'bg-green-900/20 border-green-900' : 'bg-zinc-900/20 border-zinc-800'}`}>
               <div className="text-xs text-zinc-500 mb-1">
                 {adjustmentNeeded > 0 ? '需要補到收銀台' : adjustmentNeeded < 0 ? '需要從收銀台收回' : '無需調整'}
@@ -1173,10 +1180,10 @@ const CashBagManager = ({ onNavigate, dailyClosings }: any) => {
           <div className="text-4xl font-bold font-mono">{formatCurrency(cashBagBalance)}</div>
           <div className="text-xs text-zinc-600 mt-2">
             初始：{formatCurrency(
-              Object.keys(monthlyInitial.bills).reduce((sum, denom) => 
+              Object.keys(monthlyInitial.bills).reduce((sum, denom) =>
                 sum + parseInt(denom) * monthlyInitial.bills[denom], 0
               ) + monthlyInitial.coins
-            )} 
+            )}
             + 累計收到 - 累計補出
           </div>
         </div>
@@ -1216,7 +1223,7 @@ const HistoryView = ({ onNavigate }: any) => {
   const [closings, setClosings] = useState<DailyClosing[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  useEffect(() => { onSnapshot(query(collection(db, 'daily_closings'), orderBy('date', 'desc'), limit(30)), (snap) => setClosings(snap.docs.map(d => ({id: d.id, ...d.data()} as DailyClosing)))); }, []);
+  useEffect(() => { onSnapshot(query(collection(db, 'daily_closings'), orderBy('date', 'desc'), limit(30)), (snap) => setClosings(snap.docs.map(d => ({ id: d.id, ...d.data() } as DailyClosing)))); }, []);
 
   return (
     <div className="animate-fade-in">
@@ -1228,7 +1235,7 @@ const HistoryView = ({ onNavigate }: any) => {
             <div key={c.id} className="group">
               <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-zinc-900 transition-colors" onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}>
                 <div className="flex items-center gap-4">
-                  <div className={`w-2 h-12 ${c.variance===0 ? 'bg-zinc-700' : 'bg-white'}`}></div>
+                  <div className={`w-2 h-12 ${c.variance === 0 ? 'bg-zinc-700' : 'bg-white'}`}></div>
                   <div>
                     <h4 className="text-white font-bold text-lg">{formatDate(c.date)}</h4>
                     <p className="text-zinc-500 text-xs font-mono">{c.staff_name}</p>
@@ -1236,11 +1243,11 @@ const HistoryView = ({ onNavigate }: any) => {
                 </div>
                 <div className="text-right">
                   <p className="text-white font-bold font-mono">{formatCurrency(c.total_cash_sales)}</p>
-                  <p className={`text-xs font-bold ${c.variance!==0 ? 'text-white' : 'text-zinc-600'}`}>{c.variance!==0 ? `VAR: ${c.variance}` : 'PERFECT'}</p>
+                  <p className={`text-xs font-bold ${c.variance !== 0 ? 'text-white' : 'text-zinc-600'}`}>{c.variance !== 0 ? `VAR: ${c.variance}` : 'PERFECT'}</p>
                 </div>
-                {expandedId === c.id ? <ChevronUp size={16} className="text-zinc-500"/> : <ChevronDown size={16} className="text-zinc-500"/>}
+                {expandedId === c.id ? <ChevronUp size={16} className="text-zinc-500" /> : <ChevronDown size={16} className="text-zinc-500" />}
               </div>
-              
+
               {/* 展開詳情 */}
               {expandedId === c.id && (
                 <div className="bg-zinc-900/30 p-4 border-t border-zinc-800 text-sm font-mono space-y-2 animate-fade-in">
@@ -1260,11 +1267,16 @@ const HistoryView = ({ onNavigate }: any) => {
 
 const SettingsView = ({ currentConfig, onSave, onCancel }: any) => {
   const [config, setConfig] = useState(currentConfig);
+  const [backendUrl, setBackendUrlState] = useState(getBackendUrl());
   const { showToast } = useToast();
-  
+
   const handleSave = async () => {
-    // 僅儲存費率設定，不再儲存任何 PIN 資訊到 Firestore
+    // 儲存費率設定
     await setDoc(doc(db, 'settings', 'fees'), { rates: config, updated_at: serverTimestamp() });
+
+    // 儲存 Backend URL
+    setBackendUrl(backendUrl.trim());
+
     showToast('設定已儲存', 'success');
     onSave(config);
   };
@@ -1275,6 +1287,18 @@ const SettingsView = ({ currentConfig, onSave, onCancel }: any) => {
       <Card>
         <div className="space-y-6">
           <div className="space-y-4">
+            <div className="space-y-2 border-b border-zinc-800 pb-6 mb-6">
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Backend API URL (Google Apps Script)</label>
+              <textarea
+                value={backendUrl}
+                onChange={(e) => setBackendUrlState(e.target.value)}
+                placeholder="https://script.google.com/macros/s/.../exec"
+                className="w-full bg-black border border-zinc-800 p-3 text-zinc-300 text-sm font-mono h-24 focus:outline-none focus:border-white transition-colors resize-none"
+              />
+              <p className="text-[10px] text-zinc-600">用於連接 Google Sheets 進行 PIN 碼驗證與數據同步。</p>
+            </div>
+
+            <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">費率設定 (Fee Config)</h4>
             {(Object.keys(DEFAULT_FEE_CONFIG) as string[]).map(k => (
               <div key={k} className="flex justify-between items-center">
                 <label className="font-bold text-white text-sm tracking-wider">
@@ -1341,6 +1365,8 @@ const PinModal = ({ isOpen, onClose, onVerify, title = "需要授權" }: any) =>
 };
 
 // --- App Shell ---
+
+
 const App = () => {
   const [user, setUser] = useState<any>(null);
   const [view, setView] = useState('dashboard');
@@ -1350,13 +1376,13 @@ const App = () => {
   const [feeConfig, setFeeConfig] = useState(DEFAULT_FEE_CONFIG);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [dailyClosings, setDailyClosings] = useState<DailyClosing[]>([]);
-  
+
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [targetItem, setTargetItem] = useState<any>(null);
-  
+
   // Toast State
   const [toasts, setToasts] = useState<any[]>([]);
-  const showToast = (msg: string, type: 'success'|'error' = 'success') => {
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, msg, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
@@ -1368,13 +1394,13 @@ const App = () => {
     onAuthStateChanged(auth, setUser);
     window.addEventListener('online', () => setIsOnline(true));
     window.addEventListener('offline', () => setIsOnline(false));
-    return () => { window.removeEventListener('online', () => {}); window.removeEventListener('offline', () => {}); };
+    return () => { window.removeEventListener('online', () => { }); window.removeEventListener('offline', () => { }); };
   }, []);
 
   useEffect(() => {
     if (!user) return;
     const today = getTodayString();
-    
+
     const unsubTx = onSnapshot(query(collection(db, 'transactions'), orderBy('timestamp', 'desc'), limit(100)), (snap) => {
       setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction)).filter(t => {
         const d = t.timestamp?.toDate ? t.timestamp.toDate() : new Date(t.timestamp?.seconds * 1000);
@@ -1387,9 +1413,9 @@ const App = () => {
     });
 
     const unsubSettings = onSnapshot(doc(db, 'settings', 'fees'), (doc) => {
-       if (doc.exists()) {
-         setFeeConfig(doc.data().rates);
-       }
+      if (doc.exists()) {
+        setFeeConfig(doc.data().rates);
+      }
     });
 
     getDocs(query(collection(db, 'daily_closings'), orderBy('timestamp', 'desc'), limit(1))).then(snap => {
@@ -1413,12 +1439,19 @@ const App = () => {
 
   const handleVoidRequest = (item: any) => { setTargetItem(item); setPinModalOpen(true); };
   const executeVoid = async (pinInput: string) => {
-    // 改為呼叫後端 API 驗證 PIN，不在前端保存或比對真正的 PIN 值
+    // 改為呼叫後端 API 驗證 PIN
     try {
-      const res = await fetch('/api/verify-pin', {
+      const backendUrl = getBackendUrl();
+      if (!backendUrl) {
+        showToast("尚未設定後端 URL，請至設定頁面設定", 'error');
+        return;
+      }
+
+      // 注意：使用 text/plain 避免 CORS preflight (OPTIONS) 問題，但內容仍是 JSON
+      const res = await fetch(backendUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: pinInput }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'verify-pin', pin: pinInput }),
       });
 
       if (!res.ok) {
@@ -1465,7 +1498,7 @@ const App = () => {
           {view === 'closing' && <ClosingWizard transactions={transactions} expenses={expenses} lastClosingFloat={lastClosingFloat} onCancel={() => setView('dashboard')} onSuccess={() => setView('dashboard')} />}
           {view === 'cashbag' && <CashBagManager dailyClosings={dailyClosings} onNavigate={setView} />}
           {view === 'history' && <HistoryView onNavigate={setView} />}
-          {view === 'settings' && <SettingsView currentConfig={feeConfig} onSave={(c:any) => { setFeeConfig(c); setView('dashboard'); }} onCancel={() => setView('dashboard')} />}
+          {view === 'settings' && <SettingsView currentConfig={feeConfig} onSave={(c: any) => { setFeeConfig(c); setView('dashboard'); }} onCancel={() => setView('dashboard')} />}
         </main>
         <PinModal isOpen={pinModalOpen} onClose={() => setPinModalOpen(false)} onVerify={executeVoid} />
         <ToastContainer toasts={toasts} />
